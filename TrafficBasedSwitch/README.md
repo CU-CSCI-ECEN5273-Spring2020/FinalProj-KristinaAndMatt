@@ -1,164 +1,240 @@
-# Implementing Basic Forwarding
+# Implementing MRI
 
 ## Introduction
 
-The objective of this exercise is to write a P4 program that
-implements basic forwarding. To keep things simple, we will just
-implement forwarding for IPv4.
+The objective of this tutorial is to extend basic L3 forwarding with a
+scaled-down version of In-Band Network Telemetry (INT), which we call
+Multi-Hop Route Inspection (MRI).
 
-With IPv4 forwarding, the switch must perform the following actions
-for every packet: (i) update the source and destination MAC addresses,
-(ii) decrement the time-to-live (TTL) in the IP header, and (iii)
-forward the packet out the appropriate port.
- 
-Your switch will have a single table, which the control plane will
-populate with static rules. Each rule will map an IP address to the
-MAC address and output port for the next hop. We have already defined
-the control plane rules, so you only need to implement the data plane
-logic of your P4 program.
+MRI allows users to track the path and the length of queues that every
+packet travels through.  To support this functionality, you will need
+to write a P4 program that appends an ID and queue length to the
+header stack of every packet.  At the destination, the sequence of
+switch IDs correspond to the path, and each ID is followed by the
+queue length of the port at switch.
+
+As before, we have already defined the control plane rules, so you
+only need to implement the data plane logic of your P4 program.
 
 > **Spoiler alert:** There is a reference solution in the `solution`
-> sub-directory. Feel free to compare your implementation to the
-> reference.
+> sub-directory. Feel free to compare your implementation to the reference.
 
 ## Step 1: Run the (incomplete) starter code
 
 The directory with this README also contains a skeleton P4 program,
-`basic.p4`, which initially drops all packets. Your job will be to
-extend this skeleton program to properly forward IPv4 packets.
+`mri.p4`, which initially implements L3 forwarding. Your job (in the
+next step) will be to extend it to properly prepend the MRI custom
+headers.
 
-Before that, let's compile the incomplete `basic.p4` and bring
-up a switch in Mininet to test its behavior.
+Before that, let's compile the incomplete `mri.p4` and bring up a
+switch in Mininet to test its behavior.
 
 1. In your shell, run:
    ```bash
-   make run
+   make
    ```
    This will:
-   * compile `basic.p4`, and
-   * start a Mininet instance with three switches (`s1`, `s2`, `s3`)
-     configured in a triangle, each connected to one host (`h1`, `h2`,
-     and `h3`).
-   * The hosts are assigned IPs of `10.0.1.1`, `10.0.2.2`, and `10.0.3.3`.
+   * compile `mri.p4`, and
+   * start a Mininet instance with three switches (`s1`, `s2`, `s3`) configured
+     in a triangle. There are 5 hosts. `h1` and `h11` are connected to `s1`.
+     `h2` and `h22` are connected to `s2` and `h3` is connected to `s3`.     
+   * The hosts are assigned IPs of `10.0.1.1`, `10.0.2.2`, etc
+     (`10.0.<Switchid>.<hostID>`).
+   * The control plane programs the P4 tables in each switch based on
+     `sx-runtime.json`
 
-2. You should now see a Mininet command prompt. Open two terminals
-for `h1` and `h2`, respectively:
+2. We want to send a low rate traffic from `h1` to `h2` and a high
+   rate iperf traffic from `h11` to `h22`.  The link between `s1` and
+   `s2` is common between the flows and is a bottleneck because we
+   reduced its bandwidth to 512kbps in topology.json.  Therefore, if we
+   capture packets at `h2`, we should see high queue size for that
+   link.
+
+![Setup](setup.png)
+
+3. You should now see a Mininet command prompt. Open four terminals
+   for `h1`, `h11`, `h2`, `h22`, respectively:
    ```bash
-   mininet> xterm h1 h2
+   mininet> xterm h1 h11 h2 h22
    ```
-3. Each host includes a small Python-based messaging client and
-server. In `h2`'s xterm, start the server:
+3. In `h2`'s xterm, start the server that captures packets:
    ```bash
    ./receive.py
    ```
-4. In `h1`'s xterm, send a message to `h2`:
+4. in `h22`'s xterm, start the iperf UDP server:
    ```bash
-   ./send.py 10.0.2.2 "P4 is cool"
-   ```
-   The message will not be received.
-5. Type `exit` to leave each xterm and the Mininet command line.
-   Then, to stop mininet:
-   ```bash
-   make stop
-   ```
-   And to delete all pcaps, build files, and logs:
-   ```bash
-   make clean
+   iperf -s -u
    ```
 
-The message was not received because each switch is programmed
-according to `basic.p4`, which drops all packets on arrival.
-Your job is to extend this file so it forwards packets.
+5. In `h1`'s xterm, send one packet per second to `h2` using send.py
+   say for 30 seconds:
+   ```bash
+   ./send.py 10.0.2.2 "P4 is cool" 30
+   ```
+   The message "P4 is cool" should be received in `h2`'s xterm,
+6. In `h11`'s xterm, start iperf client sending for 15 seconds
+   ```bash
+   iperf -c 10.0.2.22 -t 15 -u
+   ```
+7. At `h2`, the MRI header has no hop info (`count=0`)
+8. type `exit` to close each xterm window
+
+You should see the message received at host `h2`, but without any
+information about the path the message took.  Your job is to extend
+the code in `mri.p4` to implement the MRI logic to record the path.
 
 ### A note about the control plane
 
-A P4 program defines a packet-processing pipeline, but the rules
-within each table are inserted by the control plane. When a rule
-matches a packet, its action is invoked with parameters supplied by
-the control plane as part of the rule.
+P4 programs define a packet-processing pipeline, but the rules
+governing packet processing are inserted into the pipeline by the
+control plane.  When a rule matches a packet, its action is invoked
+with parameters supplied by the control plane as part of the rule.
 
-In this exercise, we have already implemented the the control plane
-logic for you. As part of bringing up the Mininet instance, the
-`make run` command will install packet-processing rules in the tables of
-each switch. These are defined in the `sX-commands.txt` files, where
+In this exercise, the control plane logic has already been
+implemented.  As part of bringing up the Mininet instance, the
+`make` script will install packet-processing rules in the tables of
+each switch. These are defined in the `sX-runtime.json` files, where
 `X` corresponds to the switch number.
 
-**Important:** A P4 program also defines the interface between the
-switch pipeline and control plane. The commands in the files
-`sX-commands.txt` refer to specific tables, keys, and actions by name,
-and any changes in the P4 program that add or rename tables, keys, or
-actions will need to be reflected in these command files.
+## Step 2: Implement MRI
 
-## Step 2: Implement L3 forwarding
+The `mri.p4` file contains a skeleton P4 program with key pieces of
+logic replaced by `TODO` comments.  These should guide your
+implementation---replace each `TODO` with logic implementing the
+missing piece.
 
-The `basic.p4` file contains a skeleton P4 program with key pieces of
-logic replaced by `TODO` comments. Your implementation should follow
-the structure given in this file---replace each `TODO` with logic
-implementing the missing piece.
+MRI will require two custom headers. The first header, `mri_t`,
+contains a single field `count`, which indicates the number of switch
+IDs that follow. The second header, `switch_t`, contains switch ID and
+Queue depth fields of each switch hop the packet goes through.
 
-A complete `basic.p4` will contain the following components:
+One of the biggest challenges in implementing MRI is handling the
+recursive logic for parsing these two headers. We will use a
+`parser_metadata` field, `remaining`, to keep track of how many
+`switch_t` headers we need to parse.  In the `parse_mri` state, this
+field should be set to `hdr.mri.count`.  In the `parse_swtrace` state,
+this field should be decremented. The `parse_swtrace` state will
+transition to itself until `remaining` is 0.
 
-1. Header type definitions for Ethernet (`ethernet_t`) and IPv4 (`ipv4_t`).
-2. **TODO:** Parsers for Ethernet and IPv4 that populate `ethernet_t` and `ipv4_t` fields.
+The MRI custom headers will be carried inside an IP Options
+header. The IP Options header contains a field, `option`, which
+indicates the type of the option. We will use a special type 31 to
+indicate the presence of the MRI headers.
+
+Beyond the parser logic, you will add a table in egress, `swtrace` to
+store the switch ID and queue depth, and actions that increment the
+`count` field, and append a `switch_t` header.
+
+A complete `mri.p4` will contain the following components:
+
+1. Header type definitions for Ethernet (`ethernet_t`), IPv4 (`ipv4_t`),
+   IP Options (`ipv4_option_t`), MRI (`mri_t`), and Switch (`switch_t`). 
+2. Parsers for Ethernet, IPv4, IP Options, MRI, and Switch that will
+populate `ethernet_t`, `ipv4_t`, `ipv4_option_t`, `mri_t`, and
+`switch_t`.
 3. An action to drop a packet, using `mark_to_drop()`.
-4. **TODO:** An action (called `ipv4_forward`) that:
-	1. Sets the egress port for the next hop. 
-	2. Updates the ethernet destination address with the address of the next hop. 
-	3. Updates the ethernet source address with the address of the switch. 
-	4. Decrements the TTL.
-5. **TODO:** A control that:
+4. An action (called `ipv4_forward`), which will:
+	1. Set the egress port for the next hop.
+	2. Update the ethernet destination address with the address of
+	the next hop.	
+	3. Update the ethernet source address with the address of the switch. 
+	4. Decrement the TTL.
+5. An ingress control that:
     1. Defines a table that will read an IPv4 destination address, and
        invoke either `drop` or `ipv4_forward`.
-    2. An `apply` block that applies the table.   
-6. **TODO:** A deparser that selects the order
-    in which fields inserted into the outgoing packet.
-7. A `package` instantiation supplied with the parser, control, and deparser.
-    > In general, a package also requires instances of checksum verification
-    > and recomputation controls. These are not necessary for this tutorial
-    > and are replaced with instantiations of empty controls.
+    2. An `apply` block that applies the table.
+6. At egress, an action (called `add_swtrace`) that will add the
+   switch ID and queue depth.
+8. An egress control that applies a table (`swtrace`) to store the
+   switch ID and queue depth, and calls `add_swtrace`.
+9. A deparser that selects the order in which fields inserted into the outgoing
+   packet.
+10. A `package` instantiation supplied with the parser, control,
+    checksum verification and recomputation and deparser.
 
 ## Step 3: Run your solution
 
-Follow the instructions from Step 1. This time, your message from
-`h1` should be delivered to `h2`.
+Follow the instructions from Step 1.  This time, when your message
+ from `h1` is delivered to `h2`, you should see the sequence of
+ switches through which the packet traveled plus the corresponding
+ queue depths.  The expected output will look like the following,
+ which shows the MRI header, with a `count` of 2, and switch ids
+ (`swids`) 2 and 1.  The queue depth at the common link (from s1 to
+ s2) is high.
 
-### Food for thought
+```
+got a packet
+###[ Ethernet ]###
+  dst       = 00:04:00:02:00:02
+  src       = f2:ed:e6:df:4e:fa
+  type      = 0x800
+###[ IP ]###
+     version   = 4L
+     ihl       = 10L
+     tos       = 0x0
+     len       = 42
+     id        = 1
+     flags     =
+     frag      = 0L
+     ttl       = 62
+     proto     = udp
+     chksum    = 0x60c0
+     src       = 10.0.1.1
+     dst       = 10.0.2.2
+     \options   \
+      |###[ MRI ]###
+      |  copy_flag = 0L
+      |  optclass  = control
+      |  option    = 31L
+      |  length    = 20
+      |  count     = 2
+      |  \swtraces  \
+      |   |###[ SwitchTrace ]###
+      |   |  swid      = 2
+      |   |  qdepth    = 0
+      |   |###[ SwitchTrace ]###
+      |   |  swid      = 1
+      |   |  qdepth    = 17
+###[ UDP ]###
+        sport     = 1234
+        dport     = 4321
+        len       = 18
+        chksum    = 0x1c7b
+###[ Raw ]###
+           load      = 'P4 is cool'
 
-The "test suite" for your solution---sending a message from `h1` to
-`h2`---is not very robust. What else should you test to be confident
-of your implementation?
-
-> Although the Python `scapy` library is outside the scope of this tutorial,
-> it can be used to generate packets for testing. The `send.py` file shows how
-> to use it.
-
-Other questions to consider:
- - How would you enhance your program to support next hops?
- - Is this program enough to replace a router?  What's missing?
+```
 
 ### Troubleshooting
 
-There are several problems that might manifest as you develop your program:
+There are several ways that problems might manifest:
 
-1. `basic.p4` might fail to compile. In this case, `make run` will
-report the error emitted from the compiler and halt.
+1. `mri.p4` fails to compile. In this case, `make` will report the
+   error emitted from the compiler and stop.
 
-2. `basic.p4` might compile but fail to support the control plane
-rules in the `s1-commands.txt` through `s3-command.txt` files that
-`make run` tries to install using the Bmv2 CLI. In this case, `make run`
-will log the CLI tool output in the `logs` directory. Use these error 
-messages to fix your `basic.p4` implementation.
+2. `mri.p4` compiles but does not support the control plane rules in
+   the `sX-runtime.json` files that `make` tries to install using a
+   Python controller. In this case, `make` will log the controller
+   output in the `logs` directory.  Use these error messages to fix
+   your `mri.p4` implementation.
 
-3. `basic.p4` might compile, and the control plane rules might be
-installed, but the switch might not process packets in the desired
-way. The `/tmp/p4s.<switch-name>.log` files contain detailed logs
-that describing how each switch processes each packet. The output is
-detailed and can help pinpoint logic errors in your implementation.
+3. `mri.p4` compiles, and the control plane rules are installed, but
+   the switch does not process packets in the desired way. The
+   `/tmp/p4s.<switch-name>.log` files contain trace messages
+   describing how each switch processes each packet. The output is
+   detailed and can help pinpoint logic errors in your implementation.
+   The `build/<switch-name>-<interface-name>.pcap` also contains the
+   pcap of packets on each interface. Use `tcpdump -r <filename> -xxx`
+   to print the hexdump of the packets.
+
+4. `mri.p4` compiles and all rules are installed. Packets go through
+    and the logs show that the queue length is always 0.  Then either
+    reduce the link bandwidth in `topology.json`.
 
 #### Cleaning up Mininet
 
-In the latter two cases above, `make run` may leave a Mininet instance
-running in the background. Use the following command to clean up
+In the latter two cases above, `make` may leave a Mininet instance
+running in the background.  Use the following command to clean up
 these instances:
 
 ```bash
@@ -167,7 +243,5 @@ make stop
 
 ## Next Steps
 
-Congratulations, your implementation works! In the next exercise we
-will build on top of this and add support for a basic tunneling
-protocol: [basic_tunnel](../basic_tunnel)!
-
+Congratulations, your implementation works! Move on to [Source
+Routing](../source_routing).
