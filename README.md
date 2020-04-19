@@ -5,7 +5,7 @@ _Description:_ Our main areas of focus are to modify the way traffic is routed f
 To Run:
 
 Install a VM image that includes the necessary tools pre-installed:
-1. Download [VM Image](https://drive.google.com/open?id=1ACkpD66zoBJHCX2K50OO8-pssJGZhzMr)
+1. Download [VM Image](https://drive.google.com/uc?id=1lYF4NgFkYoRqtskdGTMxy3sXUV0jkMxo&export=download)
 2. Import the virtual machine into VirtualBox. Open VirtualBox, select “File > Import Appliance”, and navigate to the downloaded file.
 3. Pull git repository
 4. Type make to run file
