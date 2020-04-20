@@ -172,9 +172,9 @@ def run_mininet(manifest):
         print('To view the switch output pcap, check the pcap files in %s:' % pcap_dir, file=message)
         print(' for example run:  sudo tcpdump -xxx -r s1-eth1.pcap', file=message)
         print(file=message)
-#        print('To run the switch debugger, run this command from your host OS:', file=message)
-#        print('  bm_p4dbg' , file=message)
-#        print(file=message)
+        print('To run the switch debugger, run this command from your host OS:', file=message)
+        print('  bm_p4dbg' , file=message)
+        print(file=message)
 
     switch_args.append('--cli-message "%s"' % message_file)
 
@@ -233,9 +233,9 @@ def run_multiswitch(manifest):
         print('To view the switch output pcap, check the pcap files in %s:' % pcap_dir, file=message)
         print(' for example run:  sudo tcpdump -xxx -r s1-eth1.pcap', file=message)
         print(file=message)
-#        print('To run the switch debugger, run this command from your host OS:', file=message)
-#        print('  bm_p4dbg' , file=message)
-#        print(file=message)
+        print('To run the switch debugger, run this command from your host OS:', file=message)
+        print('  bm_p4dbg' , file=message)
+        print(file=message)
 
     script_args.append('--cli-message "%s"' % message_file)
 

@@ -1,17 +1,14 @@
 import subprocess
-#from pprint import pprint
+
 from shortest_path import ShortestPath
 
 class AppController:
 
     def __init__(self, manifest=None, target=None, topo=None, net=None, links=None):
-        # TODO: pass in additional topologies and assign them to member variables here
         self.manifest = manifest
         self.target = target
         self.conf = manifest['targets'][target]
         self.topo = topo
-        #self.topo_tier2 = topo2
-        #self.topo_tier3 = topo3
         self.net = net
         self.links = links
 
@@ -72,17 +69,12 @@ class AppController:
                 h.cmd('ip route add %s dev %s' % (link['sw_ip'], iface))
             h.setDefaultRoute("via %s" % link['sw_ip'])
 
-        # TODO: match based on host tier below
         for h in self.net.hosts:
-            # Use correct topo per host
-            # This will change path selections without modifying the above connections...
             h_link = self.topo._host_links[h.name].values()[0]
             for sw in self.net.switches:
                 path = shortestpath.get(sw.name, h.name, exclude=lambda n: n[0]=='h')
                 if not path: continue
                 if not path[1][0] == 's': continue # next hop is a switch
-                # -- DEBUG --
-                #pprint(path)
                 sw_link = self.topo._sw_links[sw.name][path[1]]
                 #entries[sw.name].append('table_add send_frame rewrite_mac %d => %s' % (sw_link[0]['port'], sw_link[0]['mac']))
                 #entries[sw.name].append('table_add forward set_dmac %s => %s' % (h_link['host_ip'], sw_link[1]['mac']))
@@ -92,8 +84,6 @@ class AppController:
                 if h == h2: continue
                 path = shortestpath.get(h.name, h2.name, exclude=lambda n: n[0]=='h')
                 if not path: continue
-                # -- DEBUG --
-                #pprint(path)
                 h_link = self.topo._host_links[h.name][path[1]]
                 h2_link = self.topo._host_links[h2.name].values()[0]
                 h.cmd('ip route add %s via %s' % (h2_link['host_ip'], h_link['sw_ip']))
