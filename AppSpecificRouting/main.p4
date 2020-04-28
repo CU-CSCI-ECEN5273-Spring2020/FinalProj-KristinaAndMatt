@@ -264,10 +264,12 @@ control MyIngress(inout headers hdr,
 
 	if (hdr.ipv4.protocol == IP_PROTOCOLS_TCP) {
 		meta.ecmp_hash = 3;
-	}	
+	}
+	if (hdr.ipv4.protocol == IP_PROTOCOLS_UDP) {
+		meta.ecmp_hash = 0;
+	}
+	 	
 
-	    //meta.ecmp_group_id = 3;
-	    //meta.ecmp_hash = 3; /* Output 0 to 3? */
     }
 
     action set_nhop(macAddr_t dstAddr, egressSpec_t port) {
