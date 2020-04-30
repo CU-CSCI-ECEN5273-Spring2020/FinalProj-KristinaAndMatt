@@ -2,11 +2,7 @@
 #include <core.p4>
 #include <v1model.p4>
 
-const bit<8>  UDP_PROTOCOL = 0x11;
 const bit<16> TYPE_IPV4 = 0x800;
-const bit<5>  IPV4_OPTION_MRI = 31;
-
-#define MAX_HOPS 9
 
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
@@ -15,8 +11,6 @@ const bit<5>  IPV4_OPTION_MRI = 31;
 typedef bit<9>  egressSpec_t;
 typedef bit<48> macAddr_t;
 typedef bit<32> ip4Addr_t;
-typedef bit<32> switchID_t;
-typedef bit<32> qdepth_t;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -39,44 +33,14 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
-header ipv4_option_t {
-    bit<1> copyFlag;
-    bit<2> optClass;
-    bit<5> option;
-    bit<8> optionLength;
-}
-
-header mri_t {
-    bit<16>  count;
-}
-
-header switch_t {
-    switchID_t  swid;
-    qdepth_t    qdepth;
-}
-
-struct ingress_metadata_t {
-    bit<16>  count;
-}
-
-struct parser_metadata_t {
-    bit<16>  remaining;
-}
-
 struct metadata {
-    ingress_metadata_t   ingress_metadata;
-    parser_metadata_t   parser_metadata;
+    /* empty */
 }
 
 struct headers {
-    ethernet_t         ethernet;
-    ipv4_t             ipv4;
-    ipv4_option_t      ipv4_option;
-    mri_t              mri;
-    switch_t[MAX_HOPS] swtraces;
+    ethernet_t   ethernet;
+    ipv4_t       ipv4;
 }
-
-error { IPHeaderTooShort }
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -101,48 +65,10 @@ parser MyParser(packet_in packet,
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        verify(hdr.ipv4.ihl >= 5, error.IPHeaderTooShort);
-        transition select(hdr.ipv4.ihl) {
-            5             : accept;
-            default       : parse_ipv4_option;
-        }
-    }
-
-    state parse_ipv4_option {
-        /*
-        * TODO: Add logic to:
-        * - Extract the ipv4_option header.
-        *   - If value is equal to IPV4_OPTION_MRI, transition to parse_mri.
-        *   - Otherwise, accept.
-        */
         transition accept;
     }
 
-    state parse_mri {
-        /*
-        * TODO: Add logic to:
-        * - Extract hdr.mri.
-        * - Set meta.parser_metadata.remaining to hdr.mri.count
-        * - Select on the value of meta.parser_metadata.remaining
-        *   - If the value is equal to 0, accept.
-        *   - Otherwise, transition to parse_swtrace.
-        */
-        transition accept;
-    }
-
-    state parse_swtrace {
-        /*
-        * TODO: Add logic to:
-        * - Extract hdr.swtraces.next.
-        * - Decrement meta.parser_metadata.remaining by 1
-        * - Select on the value of meta.parser_metadata.remaining
-        *   - If the value is equal to 0, accept.
-        *   - Otherwise, transition to parse_swtrace.
-        */
-        transition accept;
-    }    
 }
-
 
 /*************************************************************************
 ************   C H E C K S U M    V E R I F I C A T I O N   *************
@@ -170,10 +96,11 @@ control MyIngress(inout headers hdr,
         hdr.ethernet.dstAddr = dstAddr;
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
-
-    table ipv4_lpm {
+    
+    table ipv4_exa {
         key = {
-            hdr.ipv4.dstAddr: lpm;
+            hdr.ipv4.dstAddr: exact;
+            hdr.ipv4.srcAddr: exact;
         }
         actions = {
             ipv4_forward;
@@ -181,12 +108,12 @@ control MyIngress(inout headers hdr,
             NoAction;
         }
         size = 1024;
-        default_action = NoAction();
+        default_action = drop();
     }
     
     apply {
         if (hdr.ipv4.isValid()) {
-            ipv4_lpm.apply();
+            ipv4_exa.apply();
         }
     }
 }
@@ -198,43 +125,14 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-    action add_swtrace(switchID_t swid) { 
-        /*
-        * TODO: add logic to:
-        - Increment hdr.mri.count by 1
-        - Add a new swtrace header by calling push_front(1) on hdr.swtraces.
-        - Set hdr.swtraces[0].swid to the id parameter
-        - Set hdr.swtraces[0].qdepth to (qdepth_t)standard_metadata.deq_qdepth
-        - Increment hdr.ipv4.ihl by 2
-        - Increment hdr.ipv4.totalLen by 8
-        - Increment hdr.ipv4_option.optionLength by 8
-        */
-    }
-
-    table swtrace {
-        actions        = { 
-            add_swtrace;
-            NoAction;
-        }
-
-        default_action =  NoAction();      
-    }
-    
-    apply {
-        /*
-        * TODO: add logic to:
-        * - If hdr.mri is valid:
-        *   - Apply table swtrace
-        */
-	swtrace.apply();
-    }
+    apply {  }
 }
 
 /*************************************************************************
 *************   C H E C K S U M    C O M P U T A T I O N   **************
 *************************************************************************/
 
-control MyComputeChecksum(inout headers hdr, inout metadata meta) {
+control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
      apply {
 	update_checksum(
 	    hdr.ipv4.isValid(),
@@ -262,8 +160,6 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
-
-        /* TODO: emit ipv4_option, mri and swtraces headers */
     }
 }
 

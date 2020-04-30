@@ -149,7 +149,7 @@ class ExerciseRunner:
             return str(l) + "ms"
 
 
-    def __init__(self, topo_file, log_dir, pcap_dir,
+    def __init__(self, topo_file, topo_file2, log_dir, pcap_dir,
                        switch_json, bmv2_exe='simple_switch', quiet=False):
         """ Initializes some attributes and reads the topology json. Does not
             actually run the exercise. Use run_exercise() for that.
@@ -171,6 +171,14 @@ class ExerciseRunner:
         self.hosts = topo['hosts']
         self.switches = topo['switches']
         self.links = self.parse_links(topo['links'])
+
+        # read second topo file
+        self.logger('Reading topology file 2...')
+        with open(topo_file2, 'r') as f:
+            topo2 = json.load(f)
+        self.hosts2 = topo2['hosts']
+        self.switches2 = topo2['switches']
+        self.links2 = self.parse_links(topo2['links'])
 
         # Ensure all the needed directories exist and are directories
         for dir_name in [log_dir, pcap_dir]:
@@ -202,7 +210,32 @@ class ExerciseRunner:
         sleep(1)
 
         self.do_net_cli()
-        # stop right after the CLI is exited
+
+        promote_h2 = False
+
+        print "Promote H2 and reprogram switches? (y/n)"
+        while True:
+            usr_inp = raw_input()
+            if usr_inp == 'n':
+                break
+            elif usr_inp == 'y':
+                promote_h2 = True
+                break
+            else:
+                print "Invalid option, please type either 'y' or 'n'..."
+
+        if promote_h2:
+
+            print "Reprogramming switches to promote H2..."
+            
+            self.program_switches(useTopo2=True)
+
+            sleep(1)
+
+            self.do_net_cli()
+
+        print "Exiting..."
+
         self.net.stop()
 
 
@@ -292,12 +325,18 @@ class ExerciseRunner:
                 subprocess.Popen([cli, '--thrift-port', str(thrift_port)],
                                  stdin=fin, stdout=fout)
 
-    def program_switches(self):
+    def program_switches(self, useTopo2=False):
         """ This method will program each switch using the BMv2 CLI and/or
             P4Runtime, depending if any command or runtime JSON files were
             provided for the switches.
         """
-        for sw_name, sw_dict in self.switches.iteritems():
+
+        switches = self.switches
+
+        if useTopo2:
+            switches = self.switches2
+
+        for sw_name, sw_dict in switches.iteritems():
             if 'cli_input' in sw_dict:
                 self.program_switch_cli(sw_name, sw_dict)
             if 'runtime_json' in sw_dict:
@@ -363,7 +402,9 @@ def get_args():
     parser.add_argument('-q', '--quiet', help='Suppress log messages.',
                         action='store_true', required=False, default=False)
     parser.add_argument('-t', '--topo', help='Path to topology json',
-                        type=str, required=False, default='./topology.json')
+                        type=str, required=True)
+    parser.add_argument('-t2', '--topo2', help='Path to topology w. better routes for h2',
+                        type=str, required=True)
     parser.add_argument('-l', '--log-dir', type=str, required=False, default=default_logs)
     parser.add_argument('-p', '--pcap-dir', type=str, required=False, default=default_pcaps)
     parser.add_argument('-j', '--switch_json', type=str, required=False)
@@ -377,7 +418,7 @@ if __name__ == '__main__':
     # setLogLevel("info")
 
     args = get_args()
-    exercise = ExerciseRunner(args.topo, args.log_dir, args.pcap_dir,
+    exercise = ExerciseRunner(args.topo, args.topo2, args.log_dir, args.pcap_dir,
                               args.switch_json, args.behavioral_exe, args.quiet)
 
     exercise.run_exercise()

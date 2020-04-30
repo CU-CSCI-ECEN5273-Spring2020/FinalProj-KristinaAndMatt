@@ -11,6 +11,10 @@ ifndef TOPO
 TOPO = topology.json
 endif
 
+ifndef TOPO2
+TOPO2 = topology.json
+endif
+
 source = $(wildcard *.p4)
 compiled_json := $(source:.p4=.json)
 
@@ -32,7 +36,7 @@ endif
 all: run
 
 run: build
-	sudo python $(RUN_SCRIPT) -t $(TOPO) $(run_args)
+	sudo python $(RUN_SCRIPT) -t $(TOPO) -t2 $(TOPO2) $(run_args)
 
 stop:
 	sudo mn -c
