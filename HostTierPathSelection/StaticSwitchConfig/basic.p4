@@ -97,9 +97,10 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
     
-    table ipv4_lpm {
+    table ipv4_exa {
         key = {
             hdr.ipv4.dstAddr: exact;
+            hdr.ipv4.srcAddr: exact;
         }
         actions = {
             ipv4_forward;
@@ -112,7 +113,7 @@ control MyIngress(inout headers hdr,
     
     apply {
         if (hdr.ipv4.isValid()) {
-            ipv4_lpm.apply();
+            ipv4_exa.apply();
         }
     }
 }
