@@ -25,7 +25,7 @@ There are two easy ways to do this...
 - Navigate to the HostTierPathSelection directory
 - In either of the folders (Static or Dyn Switch Config), type `make run` from your terminal
 - You should see a mininet prompt after the network is configured
-- Use tools such as ping and iperf to test connections between each host
+- Use tools such as ping and iperf to test connections between each host (e.g. h1 ping h3, pingall, iperf -s/iperf -c 10.0.X.X)
 - From the mininet prompt, type `exit` to quit
 - After exiting, type `make stop` or `sudo mn -c` to clean up the network
 

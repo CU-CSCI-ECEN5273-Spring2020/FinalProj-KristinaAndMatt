@@ -9,3 +9,6 @@ Install a VM image that includes the necessary tools pre-installed:
 2. Import the virtual machine into VirtualBox. Open VirtualBox, select “File > Import Appliance”, and navigate to the downloaded file.
 3. Pull git repository
 4. Type make to run file
+
+
+**Please take a look at the readme in `HostTierPathSelection` for additional details.**
